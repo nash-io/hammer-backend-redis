@@ -6,7 +6,7 @@ config :hammer,
   backend:
     {Hammer.Backend.Redis,
      [
-       expiry_ms: 60_000 * 60 * 2,
+       expiry_ms: :timer.hours(2),
        delete_buckets_timeout: 5000,
        redix_config: [
          host: System.get_env("REDIS_HOST", "localhost"),
