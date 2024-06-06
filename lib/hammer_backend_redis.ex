@@ -60,16 +60,16 @@ defmodule Hammer.Backend.Redis do
   Record a hit in the bucket identified by `key`
   """
   @impl Hammer.Backend
-  def count_hit(pid, key, now) do
-    GenServer.call(pid, {:count_hit, key, now, 1})
+  def count_hit(pid, key, scale_ms, now) do
+    GenServer.call(pid, {:count_hit, key, scale_ms, now, 1})
   end
 
   @doc """
   Record a hit in the bucket identified by `key`, with a custom increment
   """
   @impl Hammer.Backend
-  def count_hit(pid, key, now, increment) do
-    GenServer.call(pid, {:count_hit, key, now, increment})
+  def count_hit(pid, key, scale_ms, now, increment) do
+    GenServer.call(pid, {:count_hit, key, scale_ms, now, increment})
   end
 
   @doc """
@@ -133,8 +133,10 @@ defmodule Hammer.Backend.Redis do
     {:stop, :normal, :ok, state}
   end
 
-  def handle_call({:count_hit, key, now, increment}, _from, state) do
-    expiry = get_expiry(state)
+  def handle_call({:count_hit, key, scale_ms, now, increment}, _from, state) do
+    global_expiry_seconds = get_global_expiry_in_seconds(state)
+    bucket_timespan_seconds = milliseconds_to_seconds(scale_ms)
+    expiry = min(global_expiry_seconds, bucket_timespan_seconds)
 
     result = do_count_hit(state, key, now, increment, expiry)
     {:reply, result, state}
@@ -169,11 +171,7 @@ defmodule Hammer.Backend.Redis do
     {:reply, result, state}
   end
 
-  def handle_call(
-        {:get_delete_buckets_timeout},
-        _from,
-        %{delete_buckets_timeout: delete_buckets_timeout} = state
-      ) do
+  def handle_call({:get_delete_buckets_timeout}, _from, %{delete_buckets_timeout: delete_buckets_timeout} = state) do
     {:reply, delete_buckets_timeout, state}
   end
 
@@ -249,8 +247,12 @@ defmodule Hammer.Backend.Redis do
     "#{key_prefix}#{id}:*"
   end
 
-  defp get_expiry(state) do
+  defp get_global_expiry_in_seconds(state) do
     %{expiry_ms: expiry_ms} = state
-    round(expiry_ms / 1000 + 1)
+    milliseconds_to_seconds(expiry_ms) + 1
+  end
+
+  defp milliseconds_to_seconds(milliseconds) do
+    round(milliseconds / 1000)
   end
 end

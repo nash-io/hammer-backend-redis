@@ -18,13 +18,18 @@ defmodule HammerBackendRedisTest do
     bucket_key = {bucket, id}
     now = 123
     now_str = Integer.to_string(now)
+    scale_seconds = 20
+    scale_ms = :timer.seconds(scale_seconds)
+    redis_key = make_redis_key(key_prefix, bucket_key)
 
-    assert {:ok, 0} = Redix.command(redix, ["EXISTS", make_redis_key(key_prefix, bucket_key)])
-    assert {:ok, 1} == Backend.Redis.count_hit(pid, bucket_key, now)
-    assert {:ok, 1} = Redix.command(redix, ["EXISTS", make_redis_key(key_prefix, bucket_key)])
+    assert {:ok, 0} = Redix.command(redix, ["EXISTS", redis_key])
+    assert {:ok, 1} == Backend.Redis.count_hit(pid, bucket_key, scale_ms, now)
+    assert {:ok, 1} = Redix.command(redix, ["EXISTS", redis_key])
 
     assert {:ok, ["count", "1", "created", ^now_str, "updated", ^now_str]} =
-             Redix.command(redix, ["HGETALL", make_redis_key(key_prefix, bucket_key)])
+             Redix.command(redix, ["HGETALL", redis_key])
+
+    assert {:ok, scale_seconds} == Redix.command(redix, ["TTL", redis_key])
   end
 
   test "count_hit, insert, with custom increment", %{
@@ -39,12 +44,17 @@ defmodule HammerBackendRedisTest do
     now_str = Integer.to_string(now)
     inc = Enum.random(1..100)
     inc_str = Integer.to_string(inc)
+    scale_seconds = 20
+    scale_ms = :timer.seconds(scale_seconds)
+    redis_key = make_redis_key(key_prefix, bucket_key)
 
-    assert {:ok, inc} == Backend.Redis.count_hit(pid, bucket_key, now, inc)
-    assert {:ok, 1} = Redix.command(redix, ["EXISTS", make_redis_key(key_prefix, bucket_key)])
+    assert {:ok, inc} == Backend.Redis.count_hit(pid, bucket_key, scale_ms, now, inc)
+    assert {:ok, 1} = Redix.command(redix, ["EXISTS", redis_key])
 
     assert {:ok, ["count", ^inc_str, "created", ^now_str, "updated", ^now_str]} =
-             Redix.command(redix, ["HGETALL", make_redis_key(key_prefix, bucket_key)])
+             Redix.command(redix, ["HGETALL", redis_key])
+
+    assert {:ok, scale_seconds} == Redix.command(redix, ["TTL", redis_key])
   end
 
   test "count_hit, update", %{pid: pid, redix: redix, key_prefix: key_prefix} do
@@ -56,16 +66,21 @@ defmodule HammerBackendRedisTest do
     now_before_str = Integer.to_string(now_before)
     now_after = 456
     now_after_str = Integer.to_string(now_after)
+    scale_seconds = 20
+    scale_ms = :timer.seconds(scale_seconds)
+    redis_key = make_redis_key(key_prefix, bucket_key)
 
-    assert {:ok, 1} == Backend.Redis.count_hit(pid, bucket_key, now_before)
-    assert {:ok, 1} = Redix.command(redix, ["EXISTS", make_redis_key(key_prefix, bucket_key)])
+    assert {:ok, 1} == Backend.Redis.count_hit(pid, bucket_key, scale_ms, now_before)
+    assert {:ok, 1} = Redix.command(redix, ["EXISTS", redis_key])
 
     # 2. function call under test: count == 2
-    assert {:ok, 2} == Backend.Redis.count_hit(pid, bucket_key, now_after)
-    assert {:ok, 1} = Redix.command(redix, ["EXISTS", make_redis_key(key_prefix, bucket_key)])
+    assert {:ok, 2} == Backend.Redis.count_hit(pid, bucket_key, scale_ms, now_after)
+    assert {:ok, 1} = Redix.command(redix, ["EXISTS", redis_key])
 
     assert {:ok, ["count", "2", "created", ^now_before_str, "updated", ^now_after_str]} =
-             Redix.command(redix, ["HGETALL", make_redis_key(key_prefix, bucket_key)])
+             Redix.command(redix, ["HGETALL", redis_key])
+
+    assert {:ok, scale_seconds} == Redix.command(redix, ["TTL", redis_key])
   end
 
   test "get_bucket", %{pid: pid} do
@@ -73,6 +88,7 @@ defmodule HammerBackendRedisTest do
     bucket = 1
     id = "one"
     bucket_key = {bucket, id}
+    scale_ms = :timer.seconds(20)
 
     now_before = 123
     inc_before = Enum.random(1..100)
@@ -82,9 +98,9 @@ defmodule HammerBackendRedisTest do
 
     inc_total = inc_before + inc_after
 
-    assert {:ok, ^inc_before} = Backend.Redis.count_hit(pid, bucket_key, now_before, inc_before)
+    assert {:ok, ^inc_before} = Backend.Redis.count_hit(pid, bucket_key, scale_ms, now_before, inc_before)
 
-    assert {:ok, ^inc_total} = Backend.Redis.count_hit(pid, bucket_key, now_after, inc_after)
+    assert {:ok, ^inc_total} = Backend.Redis.count_hit(pid, bucket_key, scale_ms, now_after, inc_after)
 
     # 2. function call under test
     assert {:ok, {^bucket_key, ^inc_total, ^now_before, ^now_after}} =
@@ -96,8 +112,9 @@ defmodule HammerBackendRedisTest do
     id = "one"
     bucket_key = {bucket, id}
     now = 123
+    scale_ms = :timer.seconds(20)
 
-    {:ok, _} = Backend.Redis.count_hit(pid, bucket_key, now, 1)
+    {:ok, _} = Backend.Redis.count_hit(pid, bucket_key, scale_ms, now, 1)
     assert {:ok, 1} = Backend.Redis.delete_buckets(pid, id)
     assert {:ok, []} = Redix.command(redix, ["KEYS", "*"])
   end
@@ -105,10 +122,11 @@ defmodule HammerBackendRedisTest do
   test "delete buckets with no keys matching", %{pid: pid, redix: redix} do
     id = "one"
     now = 123
+    scale_ms = :timer.seconds(20)
 
     for bucket <- 1..10 do
       bucket_key = {bucket, id}
-      {:ok, _} = Backend.Redis.count_hit(pid, bucket_key, now, 1)
+      {:ok, _} = Backend.Redis.count_hit(pid, bucket_key, scale_ms, now, 1)
     end
 
     assert {:ok, 0} = Backend.Redis.delete_buckets(pid, "foobar")
@@ -121,10 +139,11 @@ defmodule HammerBackendRedisTest do
   test "delete buckets when many buckets exist", %{pid: pid, redix: redix} do
     id = "one"
     now = 123
+    scale_ms = :timer.seconds(20)
 
     for bucket <- 1..1000 do
       bucket_key = {bucket, id}
-      {:ok, _} = Backend.Redis.count_hit(pid, bucket_key, now, 1)
+      {:ok, _} = Backend.Redis.count_hit(pid, bucket_key, scale_ms, now, 1)
     end
 
     assert {:ok, 1_000} = Backend.Redis.delete_buckets(pid, id)
@@ -138,13 +157,14 @@ defmodule HammerBackendRedisTest do
     now = 123
     id = "one"
     bucket_key = {1, id}
-    {:ok, _} = Backend.Redis.count_hit(pid, bucket_key, now, 1)
+    scale_ms = :timer.seconds(20)
+    {:ok, _} = Backend.Redis.count_hit(pid, bucket_key, scale_ms, now, 1)
 
     another_id = "another"
 
     for bucket <- 1..1000 do
       bucket_key = {bucket, another_id}
-      {:ok, _} = Backend.Redis.count_hit(pid, bucket_key, now, 1)
+      {:ok, _} = Backend.Redis.count_hit(pid, bucket_key, scale_ms, now, 1)
     end
 
     assert {:ok, 1} = Backend.Redis.delete_buckets(pid, id)
