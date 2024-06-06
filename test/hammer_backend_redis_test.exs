@@ -73,6 +73,11 @@ defmodule HammerBackendRedisTest do
     assert {:ok, 1} == Backend.Redis.count_hit(pid, bucket_key, scale_ms, now_before)
     assert {:ok, 1} = Redix.command(redix, ["EXISTS", redis_key])
 
+    assert {:ok, scale_seconds} == Redix.command(redix, ["TTL", redis_key])
+
+    sleep_seconds = 1
+    :timer.sleep(sleep_seconds * 1000)
+
     # 2. function call under test: count == 2
     assert {:ok, 2} == Backend.Redis.count_hit(pid, bucket_key, scale_ms, now_after)
     assert {:ok, 1} = Redix.command(redix, ["EXISTS", redis_key])
@@ -80,7 +85,11 @@ defmodule HammerBackendRedisTest do
     assert {:ok, ["count", "2", "created", ^now_before_str, "updated", ^now_after_str]} =
              Redix.command(redix, ["HGETALL", redis_key])
 
-    assert {:ok, scale_seconds} == Redix.command(redix, ["TTL", redis_key])
+    assert {:ok, new_expiry_seconds} = Redix.command(redix, ["TTL", redis_key])
+
+    # expiry should NOT be reset if it has already been set before
+    assert new_expiry_seconds > scale_seconds - sleep_seconds - 0.1
+    assert new_expiry_seconds <= scale_seconds - sleep_seconds
   end
 
   test "get_bucket", %{pid: pid} do

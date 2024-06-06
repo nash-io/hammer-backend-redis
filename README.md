@@ -6,6 +6,10 @@
 
 A Redis backend for the [Hammer](https://github.com/ExHammer/hammer) rate-limiter.
 
+## Requirements
+
+- Redis version >= 7.0.0
+
 ## Installation
 
 Hammer-backend-redis
