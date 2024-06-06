@@ -225,13 +225,14 @@ defmodule Hammer.Backend.Redis do
       [
         "EXPIRE",
         redis_key,
-        expiry
+        expiry,
+        "NX"
       ],
       ["EXEC"]
     ]
 
     case Redix.pipeline(r, cmds) do
-      {:ok, ["OK", "QUEUED", "QUEUED", "QUEUED", "QUEUED", [new_count, _, _, 1]]} ->
+      {:ok, ["OK", "QUEUED", "QUEUED", "QUEUED", "QUEUED", [new_count, _, _, _]]} ->
         {:ok, new_count}
 
       {:error, reason} ->

@@ -2,6 +2,6 @@ version: '3'
 
 services:
   redis-server:
-    image: redis:6.2
+    image: redis:7.2
     ports:
       - "6379"
