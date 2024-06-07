@@ -26,9 +26,12 @@ defmodule Hammer.Backend.Redis do
 
   use GenServer
 
+  @timeout :timer.seconds(15)
+
   @type bucket_key :: {bucket :: integer, id :: String.t()}
   @type bucket_info ::
           {key :: bucket_key, count :: integer, created :: integer, updated :: integer}
+
   ## Public API
 
   @spec start :: :ignore | {:error, any} | {:ok, pid}
@@ -53,7 +56,7 @@ defmodule Hammer.Backend.Redis do
 
   @spec stop :: any
   def stop do
-    GenServer.call(__MODULE__, :stop)
+    GenServer.call(__MODULE__, :stop, @timeout)
   catch
     :exit, {:timeout, {GenServer, :call, _}} -> {:error, :timeout}
   end
@@ -63,7 +66,7 @@ defmodule Hammer.Backend.Redis do
   """
   @impl Hammer.Backend
   def count_hit(pid, key, scale_ms, now) do
-    GenServer.call(pid, {:count_hit, key, scale_ms, now, 1})
+    GenServer.call(pid, {:count_hit, key, scale_ms, now, 1}, @timeout)
   catch
     :exit, {:timeout, {GenServer, :call, _}} -> {:error, :timeout}
   end
@@ -73,7 +76,7 @@ defmodule Hammer.Backend.Redis do
   """
   @impl Hammer.Backend
   def count_hit(pid, key, scale_ms, now, increment) do
-    GenServer.call(pid, {:count_hit, key, scale_ms, now, increment})
+    GenServer.call(pid, {:count_hit, key, scale_ms, now, increment}, @timeout)
   catch
     :exit, {:timeout, {GenServer, :call, _}} -> {:error, :timeout}
   end
@@ -83,7 +86,7 @@ defmodule Hammer.Backend.Redis do
   """
   @impl Hammer.Backend
   def get_bucket(pid, key) do
-    GenServer.call(pid, {:get_bucket, key})
+    GenServer.call(pid, {:get_bucket, key}, @timeout)
   catch
     :exit, {:timeout, {GenServer, :call, _}} -> {:error, :timeout}
   end
@@ -93,7 +96,7 @@ defmodule Hammer.Backend.Redis do
   """
   @impl Hammer.Backend
   def delete_buckets(pid, id) do
-    delete_buckets_timeout = GenServer.call(pid, {:get_delete_buckets_timeout})
+    delete_buckets_timeout = GenServer.call(pid, {:get_delete_buckets_timeout}, @timeout)
     GenServer.call(pid, {:delete_buckets, id}, delete_buckets_timeout)
   catch
     :exit, {:timeout, {GenServer, :call, _}} -> {:error, :timeout}
