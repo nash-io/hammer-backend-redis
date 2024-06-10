@@ -26,9 +26,12 @@ defmodule Hammer.Backend.Redis do
 
   use GenServer
 
+  @default_timeout :timer.seconds(5)
+
   @type bucket_key :: {bucket :: integer, id :: String.t()}
   @type bucket_info ::
           {key :: bucket_key, count :: integer, created :: integer, updated :: integer}
+
   ## Public API
 
   @spec start :: :ignore | {:error, any} | {:ok, pid}
@@ -53,7 +56,9 @@ defmodule Hammer.Backend.Redis do
 
   @spec stop :: any
   def stop do
-    GenServer.call(__MODULE__, :stop)
+    GenServer.call(__MODULE__, :stop, call_timeout())
+  catch
+    :exit, {:timeout, {GenServer, :call, _}} -> {:error, :timeout}
   end
 
   @doc """
@@ -61,7 +66,9 @@ defmodule Hammer.Backend.Redis do
   """
   @impl Hammer.Backend
   def count_hit(pid, key, scale_ms, now) do
-    GenServer.call(pid, {:count_hit, key, scale_ms, now, 1})
+    GenServer.call(pid, {:count_hit, key, scale_ms, now, 1}, call_timeout())
+  catch
+    :exit, {:timeout, {GenServer, :call, _}} -> {:error, :timeout}
   end
 
   @doc """
@@ -69,7 +76,9 @@ defmodule Hammer.Backend.Redis do
   """
   @impl Hammer.Backend
   def count_hit(pid, key, scale_ms, now, increment) do
-    GenServer.call(pid, {:count_hit, key, scale_ms, now, increment})
+    GenServer.call(pid, {:count_hit, key, scale_ms, now, increment}, call_timeout())
+  catch
+    :exit, {:timeout, {GenServer, :call, _}} -> {:error, :timeout}
   end
 
   @doc """
@@ -77,7 +86,9 @@ defmodule Hammer.Backend.Redis do
   """
   @impl Hammer.Backend
   def get_bucket(pid, key) do
-    GenServer.call(pid, {:get_bucket, key})
+    GenServer.call(pid, {:get_bucket, key}, call_timeout())
+  catch
+    :exit, {:timeout, {GenServer, :call, _}} -> {:error, :timeout}
   end
 
   @doc """
@@ -85,8 +96,10 @@ defmodule Hammer.Backend.Redis do
   """
   @impl Hammer.Backend
   def delete_buckets(pid, id) do
-    delete_buckets_timeout = GenServer.call(pid, {:get_delete_buckets_timeout})
+    delete_buckets_timeout = GenServer.call(pid, {:get_delete_buckets_timeout}, call_timeout())
     GenServer.call(pid, {:delete_buckets, id}, delete_buckets_timeout)
+  catch
+    :exit, {:timeout, {GenServer, :call, _}} -> {:error, :timeout}
   end
 
   ## GenServer Callbacks
@@ -117,7 +130,7 @@ defmodule Hammer.Backend.Redis do
         Redix.start_link(redix_config)
       end
 
-    delete_buckets_timeout = Keyword.get(args, :delete_buckets_timeout, 5000)
+    delete_buckets_timeout = Keyword.get(args, :delete_buckets_timeout, @default_timeout)
 
     {:ok,
      %{
@@ -255,5 +268,10 @@ defmodule Hammer.Backend.Redis do
 
   defp milliseconds_to_seconds(milliseconds) do
     round(milliseconds / 1000)
+  end
+
+  defp call_timeout do
+    {_backend, config} = Application.get_env(:hammer, :backend)
+    Keyword.get(config, :gen_server_call_timeout, @default_timeout)
   end
 end
