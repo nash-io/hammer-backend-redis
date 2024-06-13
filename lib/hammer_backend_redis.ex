@@ -26,6 +26,8 @@ defmodule Hammer.Backend.Redis do
 
   use GenServer
 
+  alias Hammer.Utils
+
   @default_timeout :timer.seconds(5)
 
   @type bucket_key :: {bucket :: integer, id :: String.t()}
@@ -65,8 +67,8 @@ defmodule Hammer.Backend.Redis do
   Record a hit in the bucket identified by `key`
   """
   @impl Hammer.Backend
-  def count_hit(pid, key, scale_ms, now) do
-    GenServer.call(pid, {:count_hit, key, scale_ms, now, 1}, call_timeout())
+  def count_hit(pid, key, scale_ms) do
+    GenServer.call(pid, {:count_hit, key, scale_ms, 1}, call_timeout())
   catch
     :exit, {:timeout, {GenServer, :call, _}} -> {:error, :timeout}
   end
@@ -75,8 +77,8 @@ defmodule Hammer.Backend.Redis do
   Record a hit in the bucket identified by `key`, with a custom increment
   """
   @impl Hammer.Backend
-  def count_hit(pid, key, scale_ms, now, increment) do
-    GenServer.call(pid, {:count_hit, key, scale_ms, now, increment}, call_timeout())
+  def count_hit(pid, key, scale_ms, increment) do
+    GenServer.call(pid, {:count_hit, key, scale_ms, increment}, call_timeout())
   catch
     :exit, {:timeout, {GenServer, :call, _}} -> {:error, :timeout}
   end
@@ -146,12 +148,12 @@ defmodule Hammer.Backend.Redis do
     {:stop, :normal, :ok, state}
   end
 
-  def handle_call({:count_hit, key, scale_ms, now, increment}, _from, state) do
+  def handle_call({:count_hit, key, scale_ms, increment}, _from, state) do
     global_expiry_seconds = get_global_expiry_in_seconds(state)
     bucket_timespan_seconds = milliseconds_to_seconds(scale_ms)
     expiry = min(global_expiry_seconds, bucket_timespan_seconds)
 
-    result = do_count_hit(state, key, now, increment, expiry)
+    result = do_count_hit(state, key, increment, expiry)
     {:reply, result, state}
   end
 
@@ -212,8 +214,9 @@ defmodule Hammer.Backend.Redis do
   # we are using the first method described (called bucketing)
   # in https://www.youtube.com/watch?v=CRGPbCbRTHA
   # but we add the 'created' and 'updated' meta information fields.
-  defp do_count_hit(%{redix: r} = state, key, now, increment, expiry) do
+  defp do_count_hit(%{redix: r} = state, key, increment, expiry) do
     redis_key = make_redis_key(state, key)
+    now = Utils.timestamp()
 
     cmds = [
       ["MULTI"],
@@ -241,12 +244,18 @@ defmodule Hammer.Backend.Redis do
         expiry,
         "NX"
       ],
+      [
+        "HMGET",
+        redis_key,
+        "created"
+      ],
       ["EXEC"]
     ]
 
     case Redix.pipeline(r, cmds) do
-      {:ok, ["OK", "QUEUED", "QUEUED", "QUEUED", "QUEUED", [new_count, _, _, _]]} ->
-        {:ok, new_count}
+      {:ok, ["OK", "QUEUED", "QUEUED", "QUEUED", "QUEUED", "QUEUED", [new_count, _, _, _, [created]]]} ->
+        created = String.to_integer(created)
+        {:ok, new_count, created}
 
       {:error, reason} ->
         {:error, reason}

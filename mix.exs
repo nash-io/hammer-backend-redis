@@ -39,7 +39,7 @@ defmodule HammerBackendRedis.Mixfile do
       {:credo, "~> 1.6", only: [:dev, :test]},
       {:dialyxir, "~> 1.1", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.28", only: :dev},
-      {:hammer, git: "https://github.com/nash-io/hammer.git", commit: "c3f1068"},
+      {:hammer, git: "https://github.com/nash-io/hammer.git", commit: "10d8237"},
       {:mock, "~> 0.3.7", only: :test},
       {:redix, "~> 1.1"}
     ]
