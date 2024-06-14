@@ -98,7 +98,7 @@ defmodule HammerBackendRedisTest do
   test "get_bucket", %{pid: pid} do
     # 1. set-up
     bucket = 1
-    id = "one"
+    id = :rand.uniform()
     bucket_key = {bucket, id}
     scale_ms = :timer.seconds(20)
 

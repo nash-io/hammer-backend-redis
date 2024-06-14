@@ -280,7 +280,6 @@ defmodule Hammer.Backend.Redis do
   end
 
   defp call_timeout do
-    {_backend, config} = Application.get_env(:hammer, :backend)
-    Keyword.get(config, :gen_server_call_timeout, @default_timeout)
+    Application.get_env(:hammer, :gen_server_call_timeout, @default_timeout)
   end
 end
